@@ -1,0 +1,22 @@
+node_modules/
+.npm-cache/
+# Local environment and device credentials; keep the deployment example.
+.env*
+!.env.example
+# Uploaded photos and SQLite databases (including WAL/SHM files).
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+test-artifacts/
+coverage/
+*.log
+# Local editor and operating system files.
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
