@@ -1,6 +1,8 @@
 # Docker 部署指南
 
-本指南用于在 Linux 服务器部署匠人之声照片领取服务。正式部署使用 Docker Compose 运行服务、宿主机 Nginx 提供 HTTPS；没有域名时可以先用公网 IP 联调。
+本指南用于在 Linux 服务器部署匠人之声照片领取服务。默认使用 Docker Compose，通过 `http://服务器IP:3000` 直接访问，无需 Nginx、域名或开放 80/443 端口。
+
+当前直连方案使用 HTTP，上传凭证和照片传输不加密。如果后续需要加密访问，可以在其他端口（例如 8443）配置 HTTPS 代理。
 
 ## 当前交付形式
 
@@ -10,7 +12,7 @@
 
 ## 1 准备服务器和源码
 
-服务器需要安装 Docker Engine、Docker Compose 插件，以及正式部署使用的 Nginx。确认 Docker 服务已启动，当前用户有权限执行：
+服务器需要安装 Docker Engine 和 Docker Compose 插件。确认 Docker 服务已启动，当前用户有权限执行：
 
 ```bash
 docker version
@@ -54,7 +56,7 @@ docker run --rm node:24-bookworm-slim node -e "console.log(require('node:crypto'
 编辑 `.env`，将生成的密钥填入 `DEVICE_KEYS`：
 
 ```dotenv
-PUBLIC_BASE_URL=https://photos.example.com
+PUBLIC_BASE_URL=http://你的服务器公网IP:3000
 DEVICE_KEYS={"experience-01":"填入刚生成的64位随机密钥"}
 RETENTION_HOURS=72
 MAX_UPLOAD_MB=30
@@ -62,7 +64,7 @@ MAX_STORAGE_MB=10240
 TRUST_PROXY=false
 ```
 
-将示例域名替换为自己的域名。`PUBLIC_BASE_URL` 必须是手机可访问的地址，不含业务路径；它决定返回的领取链接和二维码内容。不能填写 `localhost`、`127.0.0.1` 或容器名称。
+将示例 IP 替换为服务器实际公网 IP。`PUBLIC_BASE_URL` 必须是手机可访问的地址，带上 `:3000`，不含业务路径；它决定返回的领取链接和二维码内容。不能填写 `localhost`、`127.0.0.1` 或容器名称。
 
 每台设备使用独立密钥；`DEVICE_KEYS` 必须保持为一行合法 JSON，不能使用中文引号。不要提交或公开 `.env`。
 
@@ -74,7 +76,7 @@ Compose 会覆盖 `.env` 中以下三项，无需为 Docker 修改它们：
 | `PORT` | `3000` | 容器内服务端口 |
 | `DATA_DIR` | `/app/data` | 命名卷挂载目录 |
 
-Docker 部署先保持 `TRUST_PROXY=false`。宿主机代理的连接进入容器后不一定来自回环地址，不要直接照搬 systemd 部署的 `loopback` 设置。领取链接使用 `PUBLIC_BASE_URL`，不依赖代理推断协议。
+直接部署保持 `TRUST_PROXY=false`。领取链接使用 `PUBLIC_BASE_URL`。
 
 ## 3 构建和启动
 
@@ -87,50 +89,18 @@ curl --fail http://127.0.0.1:3000/healthz
 
 健康接口应返回 HTTP 200；容器健康检查默认每 30 秒执行一次。日志中若出现密钥配置错误，修正 `.env` 后重新执行 `docker compose up -d`。
 
-服务名是 `photos`。默认映射为 `127.0.0.1:3000:3000`，此时只能在服务器本机访问 3000 端口，外部访问需要下面两种方式之一。
-
-### 方式 A 正式域名和 HTTPS
-
-1. 将域名 DNS 指向服务器，为该域名准备有效的 HTTPS 证书。
-2. 将 `deploy/nginx.conf` 中的 `photos.example.com`、证书和私钥路径替换为实际值。证书文件必须先存在。
-3. 将修改后的配置安装到宿主机 Nginx：
-
-```bash
-sudo cp deploy/nginx.conf /etc/nginx/conf.d/jiangrenzhisheng.conf
-sudo nginx -t
-sudo systemctl reload nginx
-curl --fail https://photos.example.com/healthz
-```
-
-最后一条命令也要替换域名。上述命令假定 Nginx 已运行，并加载 `/etc/nginx/conf.d/*.conf`；如果服务器有面板或其他 Nginx 目录约定，在对应站点配置中设置相同代理规则。
-
-云安全组和宿主机防火墙开放 80、443 及必要运维端口。3000 保持只绑定服务器本机。Nginx 运行在宿主机时，示例中的 `proxy_pass http://127.0.0.1:3000` 才适用；如果 Nginx 也在容器内，需要另行配置容器网络。
-
-示例上传限制为 `32m`，对应应用默认 `MAX_UPLOAD_MB=30`，给 multipart 报文留出空间。调大应用上传限制时，同步调整 Nginx。保留示例关闭访问日志的设置，不要将数据目录配置成可公开浏览的静态目录。
-
-### 方式 B 公网 IP 临时联调
-
-将 `.env` 改为实际公网地址：
-
-```dotenv
-PUBLIC_BASE_URL=http://你的服务器公网IP:3000
-TRUST_PROXY=false
-```
-
-将 `compose.yaml` 的 `ports` 改为以下内容，替换原来的映射，不要追加第二条：
+服务名是 `photos`，`compose.yaml` 已默认配置以下端口映射：
 
 ```yaml
     ports:
       - "3000:3000"
 ```
 
-```bash
-docker compose up -d
-```
+在云安全组和服务器防火墙放行 TCP 3000，从另一台设备访问 `http://你的服务器公网IP:3000/healthz`。无需为此服务开放 80/443，也无需安装 `deploy/nginx.conf`。局域网部署同理，使用手机可达的局域网 IP。
 
-在云安全组和服务器防火墙放行 TCP 3000，从另一台设备访问 `http://你的服务器公网IP:3000/healthz`。局域网测试同理，使用手机可达的局域网 IP。
+如果 3000 已被其他程序使用，可以将映射改为 `"9000:3000"`，并将服务端 `PUBLIC_BASE_URL`、客户端 `serverUrl` 的端口同步改成 9000，放行 TCP 9000。容器内部端口和健康检查仍使用 3000。
 
-HTTP 仅用于临时联调。切换正式 HTTPS 时，将端口映射恢复为 `127.0.0.1:3000:3000`，关闭公网 3000，修改 `PUBLIC_BASE_URL` 并重新执行 `docker compose up -d`。已发出的旧二维码仍指向旧地址，切换前需安排旧链接在到期前继续可访问。
+修改端口映射或 `.env` 后执行 `docker compose up -d`。已发出的旧二维码仍指向旧地址，切换前需安排旧链接在到期前继续可访问。
 
 ## 4 配置换装客户端和验收
 
@@ -139,12 +109,12 @@ HTTP 仅用于临时联调。切换正式 HTTPS 时，将端口映射恢复为 `
 ```json
 {
   "enabled": true,
-  "serverUrl": "https://photos.example.com",
+  "serverUrl": "http://你的服务器公网IP:3000",
   "deviceKey": "与服务端experience-01对应的随机密钥相同"
 }
 ```
 
-IP 联调时将 `serverUrl` 改为 `http://你的服务器公网IP:3000`。客户端 `deviceKey` 只填密钥字符串，不填整个 `DEVICE_KEYS` 对象。
+将示例 IP 替换为服务器实际公网 IP。客户端 `deviceKey` 只填密钥字符串，不填整个 `DEVICE_KEYS` 对象。
 
 按实际流程上传成片，确认上传成功并展示二维码，再用手机微信和系统相机扫码，检查照片完整显示、长按可保存。首页 `/` 只显示领取说明，没有上传入口；实际领取页使用上传返回的 `claimUrl`。
 
@@ -201,10 +171,9 @@ curl --fail http://127.0.0.1:3000/healthz
 | 镜像构建失败 | 基础镜像和 npm 包源是否可达，`package-lock.json` 是否上传 |
 | 容器反复重启 | 查看 `docker compose logs --tail=100 photos`；检查 `.env` JSON 和密钥长度 |
 | 3000 端口占用 | 检查是否已运行本项目的 systemd 服务或其他程序，避免重复部署 |
-| 服务器本机正常，外部无法访问 | 默认只绑定回环地址；检查 Nginx 或 IP 联调映射，以及云安全组、防火墙 |
-| Nginx 返回 502 | 检查容器是否运行、本机 `/healthz` 是否可达，以及代理目标是否为宿主机的 3000 |
+| 服务器本机正常，外部无法访问 | 检查映射是否为 `3000:3000`，云安全组及防火墙是否放行 TCP 3000，以及公网 IP 是否正确 |
 | 上传返回 401 | 客户端密钥与服务端设备配置是否一致 |
-| 上传返回 413 | 同时检查应用 `MAX_UPLOAD_MB` 和 Nginx `client_max_body_size` |
+| 上传返回 413 | 检查应用 `MAX_UPLOAD_MB` |
 | 扫码指向 localhost 或旧地址 | 修改服务端 `PUBLIC_BASE_URL` 并重建容器配置，重新上传验收；旧二维码不会自动改变 |
 | 更新后看不到旧照片 | 检查部署目录、Compose 项目名和卷是否变化，确认原卷仍存在 |
 | 上传返回 507 | 检查应用照片配额；同时检查宿主机实际剩余磁盘空间 |

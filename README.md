@@ -6,7 +6,7 @@
 
 - Node.js **24 或更新版本**（使用内置 `node:sqlite`）。
 - 可用磁盘；手机可访问的域名或公网地址。
-- 生产环境使用 HTTPS。推荐单进程部署，通过 Nginx 代理。
+- 使用单进程部署。Docker 默认通过 `http://服务器IP:3000` 直接访问；如需 HTTPS，可另行配置代理和证书。
 
 ## 本地启动
 
@@ -162,7 +162,7 @@ sudo systemctl status jiangrenzhisheng
 
 ## Docker 部署（可选）
 
-首次部署请按 [Docker 部署指南](deploy/docker.md) 操作，包含公网 IP 联调、Nginx HTTPS、客户端配置、更新、备份和常见问题。当前提供源码与构建配置，镜像在部署机器上构建，未配置预发布镜像地址。
+首次部署请按 [Docker 部署指南](deploy/docker.md) 操作，默认使用公网 IP 和 3000 端口直接访问，无需 Nginx 或开放 80/443。指南包含客户端配置、更新、备份和常见问题。当前提供源码与构建配置，镜像在部署机器上构建，未配置预发布镜像地址。
 
 准备 `.env` 并替换密钥和 `PUBLIC_BASE_URL` 后：
 
@@ -171,7 +171,7 @@ docker compose up -d --build
 docker compose logs --tail=50
 ```
 
-使用命名卷持久化 SQLite 和照片。容器端口只绑定宿主机 `127.0.0.1:3000`，Nginx 仍部署在宿主机。不要执行 `docker compose down -v`，否则会删除持久化卷。
+使用命名卷持久化 SQLite 和照片。容器端口映射为 `3000:3000`，需要在安全组和防火墙放行 TCP 3000，并将 `PUBLIC_BASE_URL` 设置为手机可访问的 `http://服务器IP:3000`。不要执行 `docker compose down -v`，否则会删除持久化卷。
 
 ## 验证
 
