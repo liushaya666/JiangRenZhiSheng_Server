@@ -162,6 +162,8 @@ sudo systemctl status jiangrenzhisheng
 
 ## Docker 部署（可选）
 
+首次部署请按 [Docker 部署指南](deploy/docker.md) 操作，包含公网 IP 联调、Nginx HTTPS、客户端配置、更新、备份和常见问题。当前提供源码与构建配置，镜像在部署机器上构建，未配置预发布镜像地址。
+
 准备 `.env` 并替换密钥和 `PUBLIC_BASE_URL` 后：
 
 ```bash
